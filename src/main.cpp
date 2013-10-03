@@ -10,10 +10,13 @@
 using namespace std;
 using namespace cv;
 
+bool toggle_record(VideoWriter& record, int& record_counter, bool& record_to_file_a, Mat& capture_frame);
+
 // Globals
 const int COUNTER_SIZE = 50;
 const int DELAY = 30;
 const double PADDING = 0.15;
+const int MAX_VIDEO_RECORDING_FRAMES = 60; // @ 15fps = 4 sec (testing for now)
 
 int main()
 {
@@ -51,14 +54,6 @@ int main()
     Mat capture_frame;
     Mat grayscale_frame;    
 
-    // Initialize recording of video
-    VideoWriter record("LOG.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
-    if (!record.isOpened())
-    {
-        cout << "Error: VideoWriter failed to open.\n";
-        exit(1);
-    }
-
     // Create a vector to store the faces found
     vector<Rect> faces;
 
@@ -74,7 +69,8 @@ int main()
 
     clock_t start, end, current;
     
-    int counter         = 0;
+    int counter         = 0; // too not discriptive
+    int video_frame_counter = 0;
     int vertex2_x       = 0;
     int vertex2_y       = 0;
     int vertex1_x       = 0;
@@ -90,6 +86,9 @@ int main()
     bool recalibrate    = false;
     bool draw           = true;
     bool input_ready    = false;
+    bool record_to_file_a = true;
+
+    VideoWriter record("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
 
     // Create a loop to capture and find faces
     do
@@ -155,9 +154,6 @@ int main()
         if (capture_frame.empty())
             break;
 
-        // Write the next video frame
-        record << capture_frame;
-
         // Convert captured image to grayscale and equalize
         cvtColor(capture_frame, grayscale_frame, CV_BGR2GRAY);
 
@@ -183,9 +179,15 @@ int main()
                 // Difference in time (delta T)
                 current = clock() - start;
                     
-                if (!silenced && (double)current/CLOCKS_PER_SEC > 2)
+                if ((double)current/CLOCKS_PER_SEC > 2)
                 {
                     cout << "ALERT!" << endl;
+                    record << capture_frame;
+                    if (!toggle_record(record, video_frame_counter, record_to_file_a, capture_frame))
+                    {
+                        cerr << "Error: Recording subsequent video set" << endl;
+                        exit(1);
+                    }
                 }
             }
 
@@ -247,9 +249,15 @@ int main()
                         // Difference in time (delta T)
                         current = clock() - start;
                     
-                        if (!silenced && (double)current/CLOCKS_PER_SEC > 2)
+                        if ((double)current/CLOCKS_PER_SEC > 2)
                         {
                             cout << "ALERT!" << endl;
+                            record << capture_frame;
+                            if (!toggle_record(record, video_frame_counter, record_to_file_a, capture_frame))
+                            {
+                                cerr << "Error: Recording subsequent video set" << endl;
+                                exit(1);
+                            }
                         }
                     } 
                     else 
@@ -275,4 +283,29 @@ int main()
     } while(waitKey(10) != 27); // Quit on "Esc" key, wait 10ms
 
     return 0;
+}
+
+bool toggle_record(VideoWriter& record, int& record_counter, bool& record_to_file_a, Mat& capture_frame)
+{
+    if (record_counter > MAX_VIDEO_RECORDING_FRAMES)
+    {
+        record_counter = 0;
+        record.release();
+
+        if (record_to_file_a == true)
+        {
+            record.open("log_b.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);                                    
+        }
+        else
+        {
+            record.open("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);                                    
+        }
+        record_to_file_a = !record_to_file_a;
+        if (!record.isOpened())
+        {
+            cout << "Error: The VideoWriter failed to open.\n";
+            exit(1);
+        }
+    }
+    record_counter++;
 }
