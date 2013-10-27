@@ -9,24 +9,30 @@
 #include <vector>
 
 using namespace std;
-using namespace cv;
+using namespace cv; // The new C++ interface API is inside this namespace.
 
+// PROTOTYPES
+//
 bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_a, Mat& capture_frame);
 void sound_alarm(int tier);
 void reset_alarm(bool& alarm_flag, bool& alarm1, bool& alarm2, bool& alarm);
 
-// Globals
+// GLOBALS
+//
 const int timer_SIZE = 10;
 const int DELAY = 30;
-const int MAX_VIDEO_RECORDING_FRAMES = 60; // @ 15fps = 4 sec (testing for now)
+// @ 15fps = 30 sec
+const int MAX_VIDEO_RECORDING_FRAMES = 450; 
 
 int main()
 {
     // Create the cascade classifier objects used for the face detection
     CascadeClassifier face_cascade;
+    CascadeClassifier eyes_cascade;
 
-    // Use the specific classifier
+    // Use the specific classifiers
     face_cascade.load("haarcascade_frontalface_alt.xml");
+    eyes_cascade.load("haarcascade_eye.xml");
 
     // Setup the video capture device and link it to the first capture device detected
     VideoCapture capture_device;
@@ -46,8 +52,8 @@ int main()
     }
     
     // Set video width and height
-    capture_device.set(CV_CAP_PROP_FRAME_WIDTH, 640);
-    capture_device.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
+    capture_device.set(CV_CAP_PROP_FRAME_WIDTH, 320);
+    capture_device.set(CV_CAP_PROP_FRAME_HEIGHT, 240);
 
     // Create a window to present the results
     namedWindow("CameraCapture", 1);
@@ -61,15 +67,15 @@ int main()
 
     // Variables used for detectMultiScale()
     const double scale_factor = 1.1;
-    const int num_buffers = 2;
+    const int num_buffers     = 2;
     const Size face_size(30, 30);
 
     // Variables used for drawing the rectangle around the face
     const int rect_line_thickness           = 1;
     const int line_type                     = 8;
     const int num_fract_bits_in_pnt_coords  = 0;
-
-    clock_t start_alarm_time, end, current_alarm_time;
+    
+    clock_t start_alarm_time, end, current_alarm_time, start_silence_time, current_silence_time;
     
     int timer             = 0; 
     int video_frame_timer = 0;
@@ -93,12 +99,16 @@ int main()
     bool alarm1           = false;
     bool alarm2           = false;
     bool alarm3           = false;
-
+    bool error_silence    = false;
+   // bool accident         = false;
+    //time_t current_time;
+   // VideoWriter accident_record(ctime(&current_time), CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
     VideoWriter record("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
 
     // Create a loop to capture and find faces
     do
     { 
+
         // debug output
         cout << input << endl;
         // R or r
@@ -139,6 +149,7 @@ int main()
                 if (silenced) 
                 {
                     silenced = false;
+                    error_silence = false;
                     recalibrate = true;
                     cout << "silenced = false" << endl;
                     out_of_bounds = false;                    
@@ -146,6 +157,7 @@ int main()
                 else 
                 {
                     silenced = true;
+                    start_silence_time = clock();
                     cout << "silenced = true" << endl;
                 }
                 input_ready = false;
@@ -155,6 +167,18 @@ int main()
         {
             input_ready = true;
         }
+         
+        if(silenced == true && !error_silence)
+        {
+                current_silence_time = clock();
+                current_silence_time -= start_silence_time;
+                if((double)current_silence_time/CLOCKS_PER_SEC > 10)
+                {
+                    silenced = false;
+                }
+        }
+
+
 
         // Capture a new image frame
         capture_device >> capture_frame;
@@ -185,9 +209,43 @@ int main()
                 }    
             }
 
-            // For all found faces in the vector, draw a rectangle on the original image
-            for(size_t i = 0; i < faces.size(); i++)
-            {
+            /*
+                For all found faces in the vector, draw a rectangle on the original image
+            */
+            for(size_t i = 0; i < faces.size(); ++i)
+            {   
+                //cout << "NUMBER OF DETECTED FACES: " << i+1 << '\n';
+                // In each face, detect eyes
+                /******************************************************************/
+                Mat faceROI = grayscale_frame(faces[i]);
+                vector<Rect> eyes;
+
+                equalizeHist(faceROI, faceROI);  
+ 
+                eyes_cascade.detectMultiScale(faceROI, 
+                                              eyes,
+                                              scale_factor,
+                                              num_buffers,
+                                              CV_HAAR_SCALE_IMAGE,
+                                              face_size);
+
+                for (size_t j = 0; j < eyes.size(); ++j)
+                {
+                    cout << "NUMBER OF SETS OF DETECTED EYES: " << i+1 << '\n';
+                    Point center(faces[i].x + eyes[j].x + eyes[j].width * 0.5,
+                                    faces[i].y + eyes[j].y + eyes[j].height * 0.5);
+                    int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
+                    circle(capture_frame, 
+                            center,
+                            radius,
+                            Scalar(255, 0, 0),
+                            rect_line_thickness,
+                            line_type,
+                            num_fract_bits_in_pnt_coords);
+                }
+                
+                /******************************************************************/
+
                 input = waitKey(DELAY);
                 Point vertex2(faces[i].x + faces[i].width, faces[i].y + faces[i].height);
                 Point vertex1(faces[i].x, faces[i].y);
@@ -250,6 +308,9 @@ int main()
                         reset_alarm(alarm_active, alarm1, alarm2, alarm3);
                     }
                 }
+                /*
+                    Draw the rectangle in the webcam image
+                */
                 rectangle(capture_frame, 
                           vertex1, 
                           vertex2, 
@@ -258,8 +319,9 @@ int main()
                           line_type, 
                           num_fract_bits_in_pnt_coords); 
             }
-
+            
             record << capture_frame;
+          
             if (!toggle_record(record, video_frame_timer, record_to_file_a, capture_frame))
             {
                 cerr << "Error: Recording subsequent video set" << endl;
@@ -274,8 +336,9 @@ int main()
                 if ((double)current_alarm_time/CLOCKS_PER_SEC > 20)
                 {
                     silenced = true;
+                    error_silence = true;
                 }
-                else if ((double)current_alarm_time/CLOCKS_PER_SEC > 14)
+                else if ((double)current_alarm_time/CLOCKS_PER_SEC > 10)
                 {
                     if(!alarm3)
                     {
@@ -283,7 +346,7 @@ int main()
                         sound_alarm(3);
                     }
                 }
-                else if ((double)current_alarm_time/CLOCKS_PER_SEC > 8)
+                else if ((double)current_alarm_time/CLOCKS_PER_SEC > 6)
                 {
                     if(!alarm2)
                     {
@@ -306,9 +369,27 @@ int main()
             reset_alarm(alarm_active, alarm1, alarm2, alarm3);
             input = waitKey(DELAY);
         }
-        // Print the output
+        // Print border text 
+        string msg = "S.A.M. System";
+        int font_face = FONT_HERSHEY_PLAIN;
+        double font_scale = 1;
+        int thickness = 1;  
+        int line_type = 8;
+        Point text_org(10, 225);
+        putText(capture_frame, 
+                msg, 
+                text_org, 
+                font_face, 
+                font_scale, 
+                Scalar(0, 0, 255),
+                thickness,
+                line_type);
+        
+        // display frame
         imshow("CameraCapture", capture_frame);
-    } while(waitKey(10) != 27); // Quit on "Esc" key, wait 10ms
+
+      // Quit on "Esc" key, wait 10ms
+    } while(waitKey(10) != 27); 
 
     return 0;
 }
