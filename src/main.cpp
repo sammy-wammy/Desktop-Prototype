@@ -13,7 +13,7 @@ using namespace cv; // The new C++ interface API is inside this namespace.
 
 // PROTOTYPES
 //
-bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_a, Mat& capture_frame);
+bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_a, Mat& capture_frame, int numberAccidents);
 void sound_alarm(int tier);
 void reset_alarm(bool& alarm_flag, bool& alarm1, bool& alarm2, bool& alarm);
 
@@ -22,7 +22,7 @@ void reset_alarm(bool& alarm_flag, bool& alarm1, bool& alarm2, bool& alarm);
 const int timer_SIZE = 10;
 const int DELAY = 30;
 // @ 15fps = 30 sec
-const int MAX_VIDEO_RECORDING_FRAMES = 450; 
+const int MAX_VIDEO_RECORDING_FRAMES = 50;//450; 
 
 int main()
 {
@@ -88,6 +88,7 @@ int main()
     int vertex1_x_avg     = 0;
     int vertex1_y_avg     = 0;
     int input             = 0;
+    int accidents         = 0;
     
     bool out_of_bounds    = false;
     bool silenced         = false;
@@ -110,7 +111,7 @@ int main()
     { 
 
         // debug output
-        cout << input << endl;
+        //cout << input << endl;
         // R or r
         if (input == 82 || input == 114)
         {
@@ -161,6 +162,16 @@ int main()
                     cout << "silenced = true" << endl;
                 }
                 input_ready = false;
+            }
+        } 
+        //A or a
+        else if (input == 65 || input == 97)
+        {
+            if (input_ready)
+            {
+                accidents++;
+                input_ready = false;
+                cout << "ACCIDENT: " << accidents << endl << endl << endl << endl;
             }
         } 
         else 
@@ -231,7 +242,7 @@ int main()
 
                 for (size_t j = 0; j < eyes.size(); ++j)
                 {
-                    cout << "NUMBER OF SETS OF DETECTED EYES: " << i+1 << '\n';
+                    //cout << "NUMBER OF SETS OF DETECTED EYES: " << i+1 << '\n';
                     Point center(faces[i].x + eyes[j].x + eyes[j].width * 0.5,
                                     faces[i].y + eyes[j].y + eyes[j].height * 0.5);
                     int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
@@ -320,9 +331,12 @@ int main()
                           num_fract_bits_in_pnt_coords); 
             }
             
-            record << capture_frame;
-          
-            if (!toggle_record(record, video_frame_timer, record_to_file_a, capture_frame))
+            if(video_frame_timer != -1)
+            {
+                record << capture_frame;
+            }
+
+            if (!toggle_record(record, video_frame_timer, record_to_file_a, capture_frame, accidents))
             {
                 cerr << "Error: Recording subsequent video set" << endl;
                 exit(1);
@@ -394,29 +408,72 @@ int main()
     return 0;
 }
 
-bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_a, Mat& capture_frame)
+bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_a, Mat& capture_frame, int number_accidents)
 {
     if (record_timer > MAX_VIDEO_RECORDING_FRAMES)
     {
-        record_timer = 0;
         record.release();
+        record_timer = 0;
 
-        if (record_to_file_a == true)
+        switch(number_accidents)
         {
-            record.open("log_b.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);                                    
-        }
-        else
-        {
-            record.open("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);                                    
-        }
+            case 0:
+                if (record_to_file_a == true)
+                {
+                    record.open("log_b.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);   
+                    cout << "RECORDING B" << endl << endl << endl << endl;
+                }
+                else
+                {
+                    record.open("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    cout << "RECORDING A" << endl << endl << endl << endl;
+                }
+                break;
+           case 1:
+                if (record_to_file_a == true)
+                {
+                    record.open("log_d.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
+                    cout << "RECORDING D" << endl << endl << endl << endl;
+                }
+                else
+                {
+                    record.open("log_c.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    cout << "RECORDING C" << endl << endl << endl << endl;
+                }
+                break;
+           case 2:
+                if (record_to_file_a == true)
+                {
+                    record.open("log_f.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
+                    cout << "RECORDING F" << endl << endl << endl << endl;
+                }
+                else
+                {
+                    record.open("log_e.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    cout << "RECORDING E" << endl << endl << endl << endl;
+                }
+                break;
+           default:
+               {
+                   cerr << "No more recordings availale (L2 Drive noob)" << endl;
+               }
+               break;
+
+        };
+
         record_to_file_a = !record_to_file_a;
         if (!record.isOpened())
         {
             cout << "Error: The VideoWriter failed to open.\n";
-            exit(1);
+            record_timer = -1;
+            //exit(1);
         }
     }
-    record_timer++;
+    if(record_timer >= 0)
+    {
+        record_timer++;
+    }
+    return true;
 }
 
 void sound_alarm(int tier)
