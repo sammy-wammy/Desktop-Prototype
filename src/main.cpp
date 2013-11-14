@@ -22,7 +22,7 @@ void reset_alarm(bool& alarm_flag, bool& alarm1, bool& alarm2, bool& alarm);
 const int timer_SIZE = 10;
 const int DELAY = 30;
 // @ 15fps = 30 sec
-const int MAX_VIDEO_RECORDING_FRAMES = 50;//450; 
+const int MAX_VIDEO_RECORDING_FRAMES = 50;//450;
 
 int main()
 {
@@ -45,12 +45,12 @@ int main()
         exit(1);
     }
 
-    if (!capture_device.isOpened()) 
+    if (!capture_device.isOpened())
     {
         cerr << "Error: Could not setup the VideoCapture device.\n";
         exit(1);
     }
-    
+
     // Set video width and height
     capture_device.set(CV_CAP_PROP_FRAME_WIDTH, 320);
     capture_device.set(CV_CAP_PROP_FRAME_HEIGHT, 240);
@@ -60,7 +60,7 @@ int main()
 
     // Variables used for image capture
     Mat capture_frame;
-    Mat grayscale_frame;    
+    Mat grayscale_frame;
 
     // Create a vector to store the faces found
     vector<Rect> faces;
@@ -74,10 +74,10 @@ int main()
     const int rect_line_thickness           = 1;
     const int line_type                     = 8;
     const int num_fract_bits_in_pnt_coords  = 0;
-    
+
     clock_t start_alarm_time, end, current_alarm_time, start_silence_time, current_silence_time;
-    
-    int timer             = 0; 
+
+    int timer             = 0;
     int video_frame_timer = 0;
     int vertex2_x         = 0;
     int vertex2_y         = 0;
@@ -89,7 +89,8 @@ int main()
     int vertex1_y_avg     = 0;
     int input             = 0;
     int accidents         = 0;
-    
+    int eyes_timer        = 0;
+
     bool out_of_bounds    = false;
     bool silenced         = false;
     bool recalibrate      = false;
@@ -101,6 +102,8 @@ int main()
     bool alarm2           = false;
     bool alarm3           = false;
     bool error_silence    = false;
+
+    vector<Rect> eyes;
    // bool accident         = false;
     //time_t current_time;
    // VideoWriter accident_record(ctime(&current_time), CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
@@ -108,7 +111,7 @@ int main()
 
     // Create a loop to capture and find faces
     do
-    { 
+    {
 
         // debug output
         //cout << input << endl;
@@ -117,11 +120,11 @@ int main()
         {
             if (input_ready)
             {
-                if (recalibrate) 
+                if (recalibrate)
                 {
                     recalibrate = false;
-                } 
-                else 
+                }
+                else
                 {
                     recalibrate = true;
                 }
@@ -132,11 +135,11 @@ int main()
         {
             if (input_ready)
             {
-                if (draw)   
+                if (draw)
                 {
                     draw = false;
-                } 
-                else 
+                }
+                else
                 {
                     draw = true;
                 }
@@ -147,15 +150,15 @@ int main()
         {
             if (input_ready)
             {
-                if (silenced) 
+                if (silenced)
                 {
                     silenced = false;
                     error_silence = false;
                     recalibrate = true;
                     cout << "silenced = false" << endl;
-                    out_of_bounds = false;                    
+                    out_of_bounds = false;
                 }
-                else 
+                else
                 {
                     silenced = true;
                     start_silence_time = clock();
@@ -163,7 +166,7 @@ int main()
                 }
                 input_ready = false;
             }
-        } 
+        }
         //A or a
         else if (input == 65 || input == 97)
         {
@@ -173,12 +176,12 @@ int main()
                 input_ready = false;
                 cout << "ACCIDENT: " << accidents << endl << endl << endl << endl;
             }
-        } 
-        else 
+        }
+        else
         {
             input_ready = true;
         }
-         
+
         if(silenced == true && !error_silence)
         {
                 current_silence_time = clock();
@@ -189,8 +192,6 @@ int main()
                 }
         }
 
-
-
         // Capture a new image frame
         capture_device >> capture_frame;
         if (capture_frame.empty())
@@ -200,14 +201,14 @@ int main()
         cvtColor(capture_frame, grayscale_frame, CV_BGR2GRAY);
 
         // Adjust the image contrast using histogram equalization
-        equalizeHist(grayscale_frame, grayscale_frame);       
+        equalizeHist(grayscale_frame, grayscale_frame);
 
         // Detect faces and store them in the vector
-        face_cascade.detectMultiScale(grayscale_frame, 
-                                      faces, 
-                                      scale_factor, 
-                                      num_buffers, 
-                                      CV_HAAR_FIND_BIGGEST_OBJECT|CV_HAAR_SCALE_IMAGE, 
+        face_cascade.detectMultiScale(grayscale_frame,
+                                      faces,
+                                      scale_factor,
+                                      num_buffers,
+                                      CV_HAAR_FIND_BIGGEST_OBJECT|CV_HAAR_SCALE_IMAGE,
                                       face_size);
         if (!silenced)
         {
@@ -217,36 +218,48 @@ int main()
                 {
                     start_alarm_time = clock();
                     alarm_active = true;
-                }    
+                }
             }
 
             /*
                 For all found faces in the vector, draw a rectangle on the original image
             */
+
             for(size_t i = 0; i < faces.size(); ++i)
-            {   
-                //cout << "NUMBER OF DETECTED FACES: " << i+1 << '\n';
+            {
                 // In each face, detect eyes
                 /******************************************************************/
                 Mat faceROI = grayscale_frame(faces[i]);
-                vector<Rect> eyes;
+                eyes.clear();
 
-                equalizeHist(faceROI, faceROI);  
- 
-                eyes_cascade.detectMultiScale(faceROI, 
+                equalizeHist(faceROI, faceROI);
+
+                eyes_cascade.detectMultiScale(faceROI,
                                               eyes,
                                               scale_factor,
                                               num_buffers,
                                               CV_HAAR_SCALE_IMAGE,
                                               face_size);
 
+                cout << "EYES #: " << eyes.size() << endl;
+
+                if (eyes.size() <= 1)
+                {
+                    if (!alarm_active)
+                    {
+                        start_alarm_time = clock();
+                        alarm_active = true;
+                    }
+                }
+                cout << "\n\nTIMER: " << eyes_timer << "\n\n" << endl;
                 for (size_t j = 0; j < eyes.size(); ++j)
                 {
-                    //cout << "NUMBER OF SETS OF DETECTED EYES: " << i+1 << '\n';
                     Point center(faces[i].x + eyes[j].x + eyes[j].width * 0.5,
-                                    faces[i].y + eyes[j].y + eyes[j].height * 0.5);
+                                 faces[i].y + eyes[j].y + eyes[j].height * 0.5);
+
                     int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
-                    circle(capture_frame, 
+
+                    circle(capture_frame,
                             center,
                             radius,
                             Scalar(255, 0, 0),
@@ -254,7 +267,7 @@ int main()
                             line_type,
                             num_fract_bits_in_pnt_coords);
                 }
-                
+
                 /******************************************************************/
 
                 input = waitKey(DELAY);
@@ -270,7 +283,7 @@ int main()
                     vertex2_x = 0;
                     vertex2_y = 0;
                 }
-           
+
                 if (timer < timer_SIZE)
                 {
                     vertex1_x += faces[i].x;
@@ -279,7 +292,7 @@ int main()
                     vertex2_y += faces[i].y + faces[i].height;
                     timer++;
                 }
-                else 
+                else
                 {
                     int padding_width = static_cast<int>(0.15 * (vertex2_x_avg - vertex1_x_avg));
                     int padding_top = static_cast<int>(0.05 * (vertex2_y_avg - vertex1_y_avg));
@@ -299,22 +312,23 @@ int main()
                                   cvScalar(0,255,0,100),
                                   rect_line_thickness,
                                   line_type,
-                                  num_fract_bits_in_pnt_coords);   
-                    } 
+                                  num_fract_bits_in_pnt_coords);
+                    }
 
                     //Check out of bounds
-                    if (faces[i].x < vertex1_x_avg
+                    if ((faces[i].x < vertex1_x_avg
                         || faces[i].x + faces[i].width > vertex2_x_avg
                         || faces[i].y < vertex1_y_avg
                         || faces[i].y + faces[i].height > vertex2_y_avg)
+                        && eyes.size() <= 1)
                     {
                         if (!alarm_active)
                         {
                             start_alarm_time = clock();
                             alarm_active = true;
-                        }   
-                    } 
-                    else 
+                        }
+                    }
+                    else if (eyes.size() == 2)
                     {
                         reset_alarm(alarm_active, alarm1, alarm2, alarm3);
                     }
@@ -322,15 +336,15 @@ int main()
                 /*
                     Draw the rectangle in the webcam image
                 */
-                rectangle(capture_frame, 
-                          vertex1, 
-                          vertex2, 
-                          cvScalar(0, 255, 0, 0), 
-                          rect_line_thickness, 
-                          line_type, 
-                          num_fract_bits_in_pnt_coords); 
+                rectangle(capture_frame,
+                          vertex1,
+                          vertex2,
+                          cvScalar(0, 255, 0, 0),
+                          rect_line_thickness,
+                          line_type,
+                          num_fract_bits_in_pnt_coords);
             }
-            
+
             if(video_frame_timer != -1)
             {
                 record << capture_frame;
@@ -383,27 +397,27 @@ int main()
             reset_alarm(alarm_active, alarm1, alarm2, alarm3);
             input = waitKey(DELAY);
         }
-        // Print border text 
+        // Print border text
         string msg = "S.A.M. System";
         int font_face = FONT_HERSHEY_PLAIN;
         double font_scale = 1;
-        int thickness = 1;  
+        int thickness = 1;
         int line_type = 8;
         Point text_org(10, 225);
-        putText(capture_frame, 
-                msg, 
-                text_org, 
-                font_face, 
-                font_scale, 
+        putText(capture_frame,
+                msg,
+                text_org,
+                font_face,
+                font_scale,
                 Scalar(0, 0, 255),
                 thickness,
                 line_type);
-        
+
         // display frame
         imshow("CameraCapture", capture_frame);
 
       // Quit on "Esc" key, wait 10ms
-    } while(waitKey(10) != 27); 
+    } while(waitKey(10) != 27);
 
     return 0;
 }
@@ -420,12 +434,12 @@ bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_
             case 0:
                 if (record_to_file_a == true)
                 {
-                    record.open("log_b.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);   
+                    record.open("log_b.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
                     cout << "RECORDING B" << endl << endl << endl << endl;
                 }
                 else
                 {
-                    record.open("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    record.open("log_a.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
                     cout << "RECORDING A" << endl << endl << endl << endl;
                 }
                 break;
@@ -437,7 +451,7 @@ bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_
                 }
                 else
                 {
-                    record.open("log_c.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    record.open("log_c.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
                     cout << "RECORDING C" << endl << endl << endl << endl;
                 }
                 break;
@@ -449,13 +463,13 @@ bool toggle_record(VideoWriter& record, int& record_timer, bool& record_to_file_
                 }
                 else
                 {
-                    record.open("log_e.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);  
+                    record.open("log_e.avi", CV_FOURCC('X','V','I','D'), 15, capture_frame.size(), true);
                     cout << "RECORDING E" << endl << endl << endl << endl;
                 }
                 break;
            default:
                {
-                   cerr << "No more recordings availale (L2 Drive noob)" << endl;
+                   cerr << "No more recordings availale" << endl;
                }
                break;
 
